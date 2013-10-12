@@ -49,7 +49,7 @@ echo "Installed version: " $installed_ver
 
 if [[ "$installed_ver" == "$newpkgver" ]]; then
     echo "It appears the latest available version is already installed [$newpkgver]!"
-    # exit
+    exit
 fi
 
 curr_ver=`cower -i firefox-beta-bin | grep Version | awk 'BEGIN { FS = " : " } ; { print $2 }'`
