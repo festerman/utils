@@ -31,9 +31,9 @@ if [ -f firefox-*.bundle.asc ]; then
     rm -f firefox-*.bundle.asc
 fi
 
-if [[ "$latest_bet_ver" == "$latest_rel_ver" ||
-	    "$latest_bet_ver" == "$latest_rel_ver"* ]]; then
-    echo "Beta channel empty! Setting newpkgver to " $latest_rel_ver
+if [[ "$latest_beta_ver" == "$latest_rel_ver"* || 
+	    "$latest_beta_ver" == "$latest_rel_ver" ]]; then
+    echo "Beta channel older than or equal to release! Setting newpkgver to " $latest_rel_ver
     newpkgver=$latest_rel_ver
 else
     echo "Setting newpkgver to " $latest_beta_ver
