@@ -1,0 +1,14 @@
+# mozilla firefox version numbers
+
+function v2num (v) {
+    return v*1000000;
+}
+/^[[:digit:]]+\.[[digit:]]+b[[:digit:]]+$/ {
+    # beta release
+    split($0,array,"b");
+    print v2num(array[0]+array[1] "\t" $0;
+}
+/^[[:digit:]]+\.[[digit:]]+$/ {
+    # regular release
+	print v2num($0)+1000 "\t" $0;
+}

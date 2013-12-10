@@ -5,44 +5,57 @@
 
 # no guarantees!
 
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+  DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+done
+DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+
 pushd . >& /dev/null
 cd /tmp
 
 mozillas_ftp="ftp://ftp.mozilla.org/pub/firefox/releases"
-latest_beta_bundle_asc="${mozillas_ftp}/latest-beta/source/firefox-*.bundle.asc"
-latest_rel_bundle_asc="${mozillas_ftp}/latest/source/firefox-*.bundle.asc"
 
-echo "Version checks ..."
+newpkgver=$( curl -s "${mozillas_ftp}/?C=M;O=D" | sed 's/ \+/\t/g' | cut -f 9 | awk -f ${DIR}/moz_versions_sortable.awk | sort -n | cut -f 2 | tail -1 )
 
-rm -f firefox-*.bundle.asc
 
-wget -q $latest_beta_bundle_asc
+#echo $versions
 
-if [ -f firefox-*.bundle.asc ]; then 
-    latest_beta_ver=$(ls -1 firefox-*.bundle.asc | sed 's/^firefox-\([[:digit:]]\+\.[[:digit:]]\+b[[:digit:]]\+\)\.bundle\.asc$/\1/')
-    echo "Latest beta version: " $latest_beta_ver
-    rm -f firefox-*.bundle.asc
-fi
+#exit
 
-wget -q $latest_rel_bundle_asc
-if [ -f firefox-*.bundle.asc ]; then 
-    latest_rel_ver=$(ls -1 firefox-*.bundle.asc | sed 's/^firefox-\([[:digit:]]\+\.[[:digit:]]\)\.bundle\.asc$/\1/')
-    echo "Latest released version: " $latest_rel_ver 
-    rm -f firefox-*.bundle.asc
-fi
+#latest_beta_bundle_asc="${mozillas_ftp}/latest-beta/source/firefox-*.bundle.asc"
+#latest_rel_bundle_asc="${mozillas_ftp}/latest/source/firefox-*.bundle.asc"
 
-if [[ "$latest_beta_ver" == "$latest_rel_ver"* || 
-	    "$latest_beta_ver" == "$latest_rel_ver" ]]; then
-    echo "Beta channel older than or equal to release! Setting newpkgver to " $latest_rel_ver
-    newpkgver=$latest_rel_ver
-else
-    echo "Setting newpkgver to " $latest_beta_ver
-    newpkgver=$latest_beta_ver
-fi
+#echo "Version checks ..."
 
-# Link of SHA1SUMS file
+#rm -f firefox-*.bundle.asc
 
-sha="${mozillas_ftp}/${newpkgver}/SHA1SUMS"
+#wget -q $latest_beta_bundle_asc
+
+#if [ -f firefox-*.bundle.asc ]; then 
+#    latest_beta_ver=$(ls -1 firefox-*.bundle.asc | sed 's/^firefox-\([[:digit:]]\+\.[[:digit:]]\+b[[:digit:]]\+\)\.bundle\.asc$/\1/')
+#    echo "Latest beta version: " $latest_beta_ver
+#    rm -f firefox-*.bundle.asc
+#fi
+
+#wget -q $latest_rel_bundle_asc
+#if [ -f firefox-*.bundle.asc ]; then 
+#    latest_rel_ver=$(ls -1 firefox-*.bundle.asc | sed 's/^firefox-\([[:digit:]]\+\.[[:digit:]]\)\.bundle\.asc$/\1/')
+#    echo "Latest released version: " $latest_rel_ver 
+#    rm -f firefox-*.bundle.asc
+#fi
+
+#if [[ "$latest_beta_ver" == "$latest_rel_ver"* || 
+#	    "$latest_beta_ver" == "$latest_rel_ver" ]]; then
+#    echo "Beta channel older than or equal to release! Setting newpkgver to " $latest_rel_ver
+#    newpkgver=$latest_rel_ver
+#else
+#    echo "Setting newpkgver to " $latest_beta_ver
+#    newpkgver=$latest_beta_ver
+#fi
+
 
 installed_ver=`pacman -Qi firefox-beta-bin | grep 'Version' | awk 'BEGIN { FS = " : " } ; { print $2 }' | sed 's/-[[:digit:]]\+$//'`
 echo "Installed version: " $installed_ver
@@ -50,12 +63,18 @@ echo "Installed version: " $installed_ver
 if [[ "$installed_ver" == "$newpkgver" ]]; then
     echo "It appears the latest available version is already installed [$newpkgver]!"
     exit
+else
+    echo "A new version [$newpkgver] is available, will try to update ..."
 fi
 
 curr_ver=`cower -i firefox-beta-bin | grep Version | awk 'BEGIN { FS = " : " } ; { print $2 }'`
 echo "Current AUR version: " $curr_ver
 
-echo "Checking if new version exists @mozilla [by getting SHA1SUMS] ..."
+echo "Checking if new version really exists @mozilla [by getting SHA1SUMS] ..."
+
+# Link of SHA1SUMS file
+
+sha="${mozillas_ftp}/${newpkgver}/SHA1SUMS"
 
 if [ -f SHA1SUMS ]; then rm SHA1SUMS; fi
 wget -q $sha
@@ -78,13 +97,13 @@ if [ -f SHA1SUMS ]; then
     oldsha32=`grep sha1sums PKGBUILD | tail -n1 | cut -c 42-81`
 
     # Old package version, from PKGBUILD
-    oldpkgver=`grep pkgver PKGBUILD | head -n1 | cut -c 8-13`
+    oldpkgver=`grep pkgver PKGBUILD | head -n1 | awk -F= '{print $2;}'`
 
     echo "Changing pkgver..."
     echo "# old pkgver: $oldpkgver"
     echo "# new pkgver: $newpkgver "
     echo
-    sed -i "s/$oldpkgver/$newpkgver/" PKGBUILD
+    sed -i "s/^pkgver=$oldpkgver$/pkgver=$newpkgver/" PKGBUILD
 
     echo "Changing x86_64 sha1sums..."
     echo "# old sha1sum firefox-x86_64: $oldsha64 "
