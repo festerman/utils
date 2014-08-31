@@ -19,7 +19,27 @@ cd /tmp
 source_url_root="http:\/\/ftp.mozilla.org\/pub\/firefox"
 mozillas_ftp="ftp://ftp.mozilla.org/pub/firefox/releases"
 
-newpkgver=$( curl -s "${mozillas_ftp}/?C=M;O=D" | sed 's/ \+/\t/g' | cut -f 9 | awk -f ${DIR}/moz_versions_sortable.awk | sort -n | cut -f 2 | tail -1 )
+newpkgver=$( curl -s "${mozillas_ftp}/?C=M;O=D" | sed 's/ \+/\t/g' | cut -f 9 | awk -f <(cat - <<-'EOD'
+# mozilla firefox version numbers
+
+function v2num (v) {
+    return v*1000000;
+}
+
+/^[[:digit:]]+\.[[:digit:]]+b[[:digit:]]+$/ {
+    # beta versions
+    split($0,parts,"b");
+    print v2num(parts[1])+parts[2] "\t" $0;    
+}
+
+/^[[:digit:]]+\.[[:digit:]]+$/ {
+    # releases
+    print v2num($0)+1000 "\t" $0;
+    
+}
+
+EOD
+) | sort -n | cut -f 2 | tail -1 )
 
 # if the latest version is a beta, then check for release candidates
 
