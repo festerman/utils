@@ -16,46 +16,26 @@ DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 pushd . >& /dev/null
 cd /tmp
 
+source_url_root="http:\/\/ftp.mozilla.org\/pub\/firefox"
 mozillas_ftp="ftp://ftp.mozilla.org/pub/firefox/releases"
 
 newpkgver=$( curl -s "${mozillas_ftp}/?C=M;O=D" | sed 's/ \+/\t/g' | cut -f 9 | awk -f ${DIR}/moz_versions_sortable.awk | sort -n | cut -f 2 | tail -1 )
 
+# if the latest version is a beta, then check for release candidates
 
-#echo $versions
-
-#exit
-
-#latest_beta_bundle_asc="${mozillas_ftp}/latest-beta/source/firefox-*.bundle.asc"
-#latest_rel_bundle_asc="${mozillas_ftp}/latest/source/firefox-*.bundle.asc"
-
-#echo "Version checks ..."
-
-#rm -f firefox-*.bundle.asc
-
-#wget -q $latest_beta_bundle_asc
-
-#if [ -f firefox-*.bundle.asc ]; then 
-#    latest_beta_ver=$(ls -1 firefox-*.bundle.asc | sed 's/^firefox-\([[:digit:]]\+\.[[:digit:]]\+b[[:digit:]]\+\)\.bundle\.asc$/\1/')
-#    echo "Latest beta version: " $latest_beta_ver
-#    rm -f firefox-*.bundle.asc
-#fi
-
-#wget -q $latest_rel_bundle_asc
-#if [ -f firefox-*.bundle.asc ]; then 
-#    latest_rel_ver=$(ls -1 firefox-*.bundle.asc | sed 's/^firefox-\([[:digit:]]\+\.[[:digit:]]\)\.bundle\.asc$/\1/')
-#    echo "Latest released version: " $latest_rel_ver 
-#    rm -f firefox-*.bundle.asc
-#fi
-
-#if [[ "$latest_beta_ver" == "$latest_rel_ver"* || 
-#	    "$latest_beta_ver" == "$latest_rel_ver" ]]; then
-#    echo "Beta channel older than or equal to release! Setting newpkgver to " $latest_rel_ver
-#    newpkgver=$latest_rel_ver
-#else
-#    echo "Setting newpkgver to " $latest_beta_ver
-#    newpkgver=$latest_beta_ver
-#fi
-
+if [[ $newpkgver =~ .*b[[:digit:]]+$ ]]; then
+    relver=${newpkgver%b*}
+    candidate_ftp="ftp://ftp.mozilla.org/pub/firefox/candidates/${relver}-candidates/?C=M;O=D"
+    rcpkgver=$( curl -s "${candidate_ftp}" | sed 's/ \+/\t/g' | cut -f 9 | sort | grep 'build[[:digit:]]$' | tail -1 | sed 's/^build//' )
+    if [[ "x"$rcpkgver"x" != "xx" ]]; then
+	newpkgver=${relver}rc${rcpkgver}
+	download_ftp="ftp://ftp.mozilla.org/pub/firefox/candidates/${relver}-candidates/build${rcpkgver}/"
+	source_url="${source_url_root}\/candidates\/${relver}-candidates\/build${rcpkgver}\/linux-\${CARCH}\/en-US\/firefox-${relver}.tar.bz2"
+    else
+	download_ftp="ftp://ftp.mozilla.org/pub/firefox/releases/${newpkgver}"
+	source_url="${source_url_root}\/releases\/\${pkgver}\/linux-\${CARCH}\/en-US\/firefox-\${pkgver}.tar.bz2"
+    fi
+fi
 
 installed_ver=`pacman -Qi firefox-beta-bin | grep 'Version' | awk 'BEGIN { FS = " : " } ; { print $2 }' | sed 's/-[[:digit:]]\+$//'`
 echo "Installed version: " $installed_ver
@@ -70,11 +50,11 @@ fi
 curr_ver=`cower -i firefox-beta-bin | grep Version | awk 'BEGIN { FS = " : " } ; { print $2 }'`
 echo "Current AUR version: " $curr_ver
 
-echo "Checking if new version really exists @mozilla [by getting SHA1SUMS] ..."
+echo "Checking if new version really exists @mozilla [by getting SHA1SUMS from ${download_ftp}] ..."
 
 # Link of SHA1SUMS file
 
-sha="${mozillas_ftp}/${newpkgver}/SHA1SUMS"
+sha="${download_ftp}/SHA1SUMS"
 
 if [ -f SHA1SUMS ]; then rm SHA1SUMS; fi
 wget -q $sha
@@ -89,8 +69,13 @@ if [ -f SHA1SUMS ]; then
     cp /tmp/SHA1SUMS .
 
     echo 'Stripping SHA1SUM from downloaded file ...'
-    newsha64=`grep -w "linux-x86_64/en-US/firefox-$newpkgver.tar.bz2" SHA1SUMS | awk 'NR==1{print $1}'`
-    newsha32=`grep -w "linux-i686/en-US/firefox-$newpkgver.tar.bz2" SHA1SUMS | awk 'NR==1{print $1}'`
+    if [[ "x"$rcpkgver"x" != "xx" ]]; then
+	sha1sumver=$relver
+    else
+	sha1sumver=$newpkgver
+    fi
+    newsha64=`grep -w "linux-x86_64/en-US/firefox-$sha1sumver.tar.bz2" SHA1SUMS | awk 'NR==1{print $1}'`
+    newsha32=`grep -w "linux-i686/en-US/firefox-$sha1sumver.tar.bz2" SHA1SUMS | awk 'NR==1{print $1}'`
 
     echo 'Get old SHA1SUMS into variables, from the PKGBUILD ...'
     oldsha64=`grep sha1sums PKGBUILD | head -n1 | cut -c 12-51`
@@ -116,6 +101,10 @@ if [ -f SHA1SUMS ]; then
     echo "# new sha1sum firefox-i686: $newsha32 "
     echo
     sed -i "s/$oldsha32/$newsha32/" PKGBUILD
+
+    echo "Changing the download source"
+    echo "# new source: ${source_url}"
+    sed -i 's/^source=(\".*$/source=(\"'${source_url}'\"/' PKGBUILD
     
     #### edit below for your preferred installation 
     #### one of the following blocks ...
@@ -145,5 +134,5 @@ if [ -f SHA1SUMS ]; then
 
     popd >& /dev/null
 else
-    echo "Found no SHA1SUMS file in ${mozilla_ftp}/$newpkgver"
+    echo "Found no SHA1SUMS file in ${sha}"
 fi
