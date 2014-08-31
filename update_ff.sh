@@ -19,41 +19,36 @@ cd /tmp
 source_url_root="http:\/\/ftp.mozilla.org\/pub\/firefox"
 mozillas_ftp="ftp://ftp.mozilla.org/pub/firefox/releases"
 
-newpkgver=$( curl -s "${mozillas_ftp}/?C=M;O=D" | sed 's/ \+/\t/g' | cut -f 9 | awk -f <(cat - <<-'EOD'
-# mozilla firefox version numbers
+newpkgver=-1
+for version in $( curl -ls "${mozillas_ftp}/" | grep -Po '^\d+\.\d+(b\d+)?$' ); do
+    if [[ $( vercmp $version $newpkgver ) > 0 ]]; then
+	newpkgver=$version
+    fi
+done
 
-function v2num (v) {
-    return v*1000000;
-}
+# standard, when a beta, or a full release
 
-/^[[:digit:]]+\.[[:digit:]]+b[[:digit:]]+$/ {
-    # beta versions
-    split($0,parts,"b");
-    print v2num(parts[1])+parts[2] "\t" $0;    
-}
-
-/^[[:digit:]]+\.[[:digit:]]+$/ {
-    # releases
-    print v2num($0)+1000 "\t" $0;
-    
-}
-
-EOD
-) | sort -n | cut -f 2 | tail -1 )
+download_ftp="${mozillas_ftp}/${newpkgver}"
+source_url="${source_url_root}\/releases\/\${pkgver}\/linux-\${CARCH}\/en-US\/firefox-\${pkgver}.tar.bz2"
 
 # if the latest version is a beta, then check for release candidates
 
+rcpkgver=-1
+
 if [[ $newpkgver =~ .*b[[:digit:]]+$ ]]; then
     relver=${newpkgver%b*}
-    candidate_ftp="ftp://ftp.mozilla.org/pub/firefox/candidates/${relver}-candidates/?C=M;O=D"
-    rcpkgver=$( curl -s "${candidate_ftp}" | sed 's/ \+/\t/g' | cut -f 9 | sort | grep 'build[[:digit:]]$' | tail -1 | sed 's/^build//' )
-    if [[ "x"$rcpkgver"x" != "xx" ]]; then
+    candidate_ftp="ftp://ftp.mozilla.org/pub/firefox/candidates/${relver}-candidates"
+
+    for version in $( curl -ls "${candidate_ftp}/" | grep -Po '^build\K(\d+)$' ); do
+	if [[ $( vercmp $version $rcpkgver ) > 0 ]]; then
+	    rcpkgver=$version
+	fi
+    done
+
+    if [[ $rcpkgver > 0 ]]; then
 	newpkgver=${relver}rc${rcpkgver}
-	download_ftp="ftp://ftp.mozilla.org/pub/firefox/candidates/${relver}-candidates/build${rcpkgver}/"
+	download_ftp="${candidate_ftp}/build${rcpkgver}"
 	source_url="${source_url_root}\/candidates\/${relver}-candidates\/build${rcpkgver}\/linux-\${CARCH}\/en-US\/firefox-${relver}.tar.bz2"
-    else
-	download_ftp="ftp://ftp.mozilla.org/pub/firefox/releases/${newpkgver}"
-	source_url="${source_url_root}\/releases\/\${pkgver}\/linux-\${CARCH}\/en-US\/firefox-\${pkgver}.tar.bz2"
     fi
 fi
 
@@ -89,7 +84,7 @@ if [ -f SHA1SUMS ]; then
     cp /tmp/SHA1SUMS .
 
     echo 'Stripping SHA1SUM from downloaded file ...'
-    if [[ "x"$rcpkgver"x" != "xx" ]]; then
+    if [[ $rcpkgver > 0 ]]; then
 	sha1sumver=$relver
     else
 	sha1sumver=$newpkgver
